@@ -1,4 +1,4 @@
-import { enumerate, invariant } from '@zenstackhq/common-helpers';
+import { enumerate, invariant, lowerCaseFirst } from '@zenstackhq/common-helpers';
 import Decimal from 'decimal.js';
 import { match, P } from 'ts-pattern';
 import { z, ZodObject, ZodType } from 'zod';
@@ -13,7 +13,7 @@ import {
 } from '../../../schema';
 import { extractFields } from '../../../utils/object-utils';
 import { formatError } from '../../../utils/zod-utils';
-import { AGGREGATE_OPERATORS, LOGICAL_COMBINATORS, NUMERIC_FIELD_TYPES } from '../../constants';
+import { AggregateOperators, FILTER_PROPERTY_TO_KIND, LOGICAL_COMBINATORS, NUMERIC_FIELD_TYPES } from '../../constants';
 import type { ClientContract } from '../../contract';
 import {
     type AggregateArgs,
@@ -63,8 +63,19 @@ import {
 
 type GetSchemaFunc<Schema extends SchemaDef> = (model: GetModels<Schema>) => ZodType;
 
+/**
+ * Minimal field information needed for filter schema generation.
+ */
+type FieldInfo = {
+    name: string;
+    type: string;
+    optional?: boolean;
+    array?: boolean;
+};
+
 export class InputValidator<Schema extends SchemaDef> {
     private readonly schemaCache = new Map<string, ZodType>();
+    private readonly allFilterKinds = [...new Set(Object.values(FILTER_PROPERTY_TO_KIND))];
 
     constructor(private readonly client: ClientContract<Schema>) {}
 
@@ -86,8 +97,8 @@ export class InputValidator<Schema extends SchemaDef> {
         model: GetModels<Schema>,
         args: unknown,
         operation: CoreCrudOperations,
-    ): FindArgs<Schema, GetModels<Schema>, true> | undefined {
-        return this.validate<FindArgs<Schema, GetModels<Schema>, true> | undefined>(
+    ): FindArgs<Schema, GetModels<Schema>, any, true> | undefined {
+        return this.validate<FindArgs<Schema, GetModels<Schema>, any, true> | undefined>(
             model,
             operation,
             (model) => this.makeFindSchema(model, operation),
@@ -95,8 +106,11 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateExistsArgs(model: GetModels<Schema>, args: unknown): ExistsArgs<Schema, GetModels<Schema>> | undefined {
-        return this.validate<ExistsArgs<Schema, GetModels<Schema>>>(
+    validateExistsArgs(
+        model: GetModels<Schema>,
+        args: unknown,
+    ): ExistsArgs<Schema, GetModels<Schema>, any> | undefined {
+        return this.validate<ExistsArgs<Schema, GetModels<Schema>, any> | undefined>(
             model,
             'exists',
             (model) => this.makeExistsSchema(model),
@@ -104,8 +118,8 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateCreateArgs(model: GetModels<Schema>, args: unknown): CreateArgs<Schema, GetModels<Schema>> {
-        return this.validate<CreateArgs<Schema, GetModels<Schema>>>(
+    validateCreateArgs(model: GetModels<Schema>, args: unknown): CreateArgs<Schema, GetModels<Schema>, any> {
+        return this.validate<CreateArgs<Schema, GetModels<Schema>, any>>(
             model,
             'create',
             (model) => this.makeCreateSchema(model),
@@ -125,8 +139,8 @@ export class InputValidator<Schema extends SchemaDef> {
     validateCreateManyAndReturnArgs(
         model: GetModels<Schema>,
         args: unknown,
-    ): CreateManyAndReturnArgs<Schema, GetModels<Schema>> | undefined {
-        return this.validate<CreateManyAndReturnArgs<Schema, GetModels<Schema>> | undefined>(
+    ): CreateManyAndReturnArgs<Schema, GetModels<Schema>, any> | undefined {
+        return this.validate<CreateManyAndReturnArgs<Schema, GetModels<Schema>, any> | undefined>(
             model,
             'createManyAndReturn',
             (model) => this.makeCreateManyAndReturnSchema(model),
@@ -134,8 +148,8 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateUpdateArgs(model: GetModels<Schema>, args: unknown): UpdateArgs<Schema, GetModels<Schema>> {
-        return this.validate<UpdateArgs<Schema, GetModels<Schema>>>(
+    validateUpdateArgs(model: GetModels<Schema>, args: unknown): UpdateArgs<Schema, GetModels<Schema>, any> {
+        return this.validate<UpdateArgs<Schema, GetModels<Schema>, any>>(
             model,
             'update',
             (model) => this.makeUpdateSchema(model),
@@ -143,8 +157,8 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateUpdateManyArgs(model: GetModels<Schema>, args: unknown): UpdateManyArgs<Schema, GetModels<Schema>> {
-        return this.validate<UpdateManyArgs<Schema, GetModels<Schema>>>(
+    validateUpdateManyArgs(model: GetModels<Schema>, args: unknown): UpdateManyArgs<Schema, GetModels<Schema>, any> {
+        return this.validate<UpdateManyArgs<Schema, GetModels<Schema>, any>>(
             model,
             'updateMany',
             (model) => this.makeUpdateManySchema(model),
@@ -155,8 +169,8 @@ export class InputValidator<Schema extends SchemaDef> {
     validateUpdateManyAndReturnArgs(
         model: GetModels<Schema>,
         args: unknown,
-    ): UpdateManyAndReturnArgs<Schema, GetModels<Schema>> {
-        return this.validate<UpdateManyAndReturnArgs<Schema, GetModels<Schema>>>(
+    ): UpdateManyAndReturnArgs<Schema, GetModels<Schema>, any> {
+        return this.validate<UpdateManyAndReturnArgs<Schema, GetModels<Schema>, any>>(
             model,
             'updateManyAndReturn',
             (model) => this.makeUpdateManyAndReturnSchema(model),
@@ -164,8 +178,8 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateUpsertArgs(model: GetModels<Schema>, args: unknown): UpsertArgs<Schema, GetModels<Schema>> {
-        return this.validate<UpsertArgs<Schema, GetModels<Schema>>>(
+    validateUpsertArgs(model: GetModels<Schema>, args: unknown): UpsertArgs<Schema, GetModels<Schema>, any> {
+        return this.validate<UpsertArgs<Schema, GetModels<Schema>, any>>(
             model,
             'upsert',
             (model) => this.makeUpsertSchema(model),
@@ -173,8 +187,8 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateDeleteArgs(model: GetModels<Schema>, args: unknown): DeleteArgs<Schema, GetModels<Schema>> {
-        return this.validate<DeleteArgs<Schema, GetModels<Schema>>>(
+    validateDeleteArgs(model: GetModels<Schema>, args: unknown): DeleteArgs<Schema, GetModels<Schema>, any> {
+        return this.validate<DeleteArgs<Schema, GetModels<Schema>, any>>(
             model,
             'delete',
             (model) => this.makeDeleteSchema(model),
@@ -185,8 +199,8 @@ export class InputValidator<Schema extends SchemaDef> {
     validateDeleteManyArgs(
         model: GetModels<Schema>,
         args: unknown,
-    ): DeleteManyArgs<Schema, GetModels<Schema>> | undefined {
-        return this.validate<DeleteManyArgs<Schema, GetModels<Schema>> | undefined>(
+    ): DeleteManyArgs<Schema, GetModels<Schema>, any> | undefined {
+        return this.validate<DeleteManyArgs<Schema, GetModels<Schema>, any> | undefined>(
             model,
             'deleteMany',
             (model) => this.makeDeleteManySchema(model),
@@ -194,8 +208,8 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateCountArgs(model: GetModels<Schema>, args: unknown): CountArgs<Schema, GetModels<Schema>> | undefined {
-        return this.validate<CountArgs<Schema, GetModels<Schema>> | undefined>(
+    validateCountArgs(model: GetModels<Schema>, args: unknown): CountArgs<Schema, GetModels<Schema>, any> | undefined {
+        return this.validate<CountArgs<Schema, GetModels<Schema>, any> | undefined>(
             model,
             'count',
             (model) => this.makeCountSchema(model),
@@ -203,8 +217,8 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateAggregateArgs(model: GetModels<Schema>, args: unknown): AggregateArgs<Schema, GetModels<Schema>> {
-        return this.validate<AggregateArgs<Schema, GetModels<Schema>>>(
+    validateAggregateArgs(model: GetModels<Schema>, args: unknown): AggregateArgs<Schema, GetModels<Schema>, any> {
+        return this.validate<AggregateArgs<Schema, GetModels<Schema>, any>>(
             model,
             'aggregate',
             (model) => this.makeAggregateSchema(model),
@@ -212,8 +226,8 @@ export class InputValidator<Schema extends SchemaDef> {
         );
     }
 
-    validateGroupByArgs(model: GetModels<Schema>, args: unknown): GroupByArgs<Schema, GetModels<Schema>> {
-        return this.validate<GroupByArgs<Schema, GetModels<Schema>>>(
+    validateGroupByArgs(model: GetModels<Schema>, args: unknown): GroupByArgs<Schema, GetModels<Schema>, any> {
+        return this.validate<GroupByArgs<Schema, GetModels<Schema>, any>>(
             model,
             'groupBy',
             (model) => this.makeGroupBySchema(model),
@@ -546,6 +560,17 @@ export class InputValidator<Schema extends SchemaDef> {
     ): ZodType {
         const modelDef = requireModel(this.schema, model);
 
+        // unique field used in unique filters bypass filter slicing
+        const uniqueFieldNames = unique
+            ? getUniqueFields(this.schema, model)
+                  .filter(
+                      (uf): uf is { name: string; def: FieldDef } =>
+                          // single-field unique
+                          'def' in uf,
+                  )
+                  .map((uf) => uf.name)
+            : undefined;
+
         const fields: Record<string, any> = {};
         for (const field of Object.keys(modelDef.fields)) {
             const fieldDef = requireField(this.schema, model, field);
@@ -555,55 +580,56 @@ export class InputValidator<Schema extends SchemaDef> {
                 if (withoutRelationFields) {
                     continue;
                 }
-                fieldSchema = z.lazy(() => this.makeWhereSchema(fieldDef.type, false).optional());
 
-                // optional to-one relation allows null
-                fieldSchema = this.nullableIf(fieldSchema, !fieldDef.array && !!fieldDef.optional);
-
-                if (fieldDef.array) {
-                    // to-many relation
-                    fieldSchema = z.union([
-                        fieldSchema,
-                        z.strictObject({
-                            some: fieldSchema.optional(),
-                            every: fieldSchema.optional(),
-                            none: fieldSchema.optional(),
-                        }),
-                    ]);
+                // Check if Relation filter kind is allowed
+                const allowedFilterKinds = this.getEffectiveFilterKinds(model, field);
+                if (allowedFilterKinds && !allowedFilterKinds.includes('Relation')) {
+                    // Relation filters are not allowed for this field - use z.never()
+                    fieldSchema = z.never();
                 } else {
-                    // to-one relation
-                    fieldSchema = z.union([
-                        fieldSchema,
-                        z.strictObject({
-                            is: fieldSchema.optional(),
-                            isNot: fieldSchema.optional(),
-                        }),
-                    ]);
+                    fieldSchema = z.lazy(() => this.makeWhereSchema(fieldDef.type, false).optional());
+
+                    // optional to-one relation allows null
+                    fieldSchema = this.nullableIf(fieldSchema, !fieldDef.array && !!fieldDef.optional);
+
+                    if (fieldDef.array) {
+                        // to-many relation
+                        fieldSchema = z.union([
+                            fieldSchema,
+                            z.strictObject({
+                                some: fieldSchema.optional(),
+                                every: fieldSchema.optional(),
+                                none: fieldSchema.optional(),
+                            }),
+                        ]);
+                    } else {
+                        // to-one relation
+                        fieldSchema = z.union([
+                            fieldSchema,
+                            z.strictObject({
+                                is: fieldSchema.optional(),
+                                isNot: fieldSchema.optional(),
+                            }),
+                        ]);
+                    }
                 }
             } else {
+                const ignoreSlicing = !!uniqueFieldNames?.includes(field);
+
                 const enumDef = getEnum(this.schema, fieldDef.type);
                 if (enumDef) {
                     // enum
                     if (Object.keys(enumDef.values).length > 0) {
-                        fieldSchema = this.makeEnumFilterSchema(
-                            fieldDef.type,
-                            !!fieldDef.optional,
-                            withAggregations,
-                            !!fieldDef.array,
-                        );
+                        fieldSchema = this.makeEnumFilterSchema(model, fieldDef, withAggregations, ignoreSlicing);
                     }
                 } else if (fieldDef.array) {
                     // array field
-                    fieldSchema = this.makeArrayFilterSchema(fieldDef.type as BuiltinType);
+                    fieldSchema = this.makeArrayFilterSchema(model, fieldDef);
                 } else if (this.isTypeDefType(fieldDef.type)) {
-                    fieldSchema = this.makeTypedJsonFilterSchema(fieldDef.type, !!fieldDef.optional, !!fieldDef.array);
+                    fieldSchema = this.makeTypedJsonFilterSchema(model, fieldDef);
                 } else {
                     // primitive field
-                    fieldSchema = this.makePrimitiveFilterSchema(
-                        fieldDef.type as BuiltinType,
-                        !!fieldDef.optional,
-                        withAggregations,
-                    );
+                    fieldSchema = this.makePrimitiveFilterSchema(model, fieldDef, withAggregations, ignoreSlicing);
                 }
             }
 
@@ -614,6 +640,7 @@ export class InputValidator<Schema extends SchemaDef> {
 
         if (unique) {
             // add compound unique fields, e.g. `{ id1_id2: { id1: 1, id2: 1 } }`
+            // compound-field filters are not affected by slicing
             const uniqueFields = getUniqueFields(this.schema, model);
             for (const uniqueField of uniqueFields) {
                 if ('defs' in uniqueField) {
@@ -627,22 +654,12 @@ export class InputValidator<Schema extends SchemaDef> {
                                     if (enumDef) {
                                         // enum
                                         if (Object.keys(enumDef.values).length > 0) {
-                                            fieldSchema = this.makeEnumFilterSchema(
-                                                def.type,
-                                                !!def.optional,
-                                                false,
-                                                false,
-                                            );
+                                            fieldSchema = this.makeEnumFilterSchema(model, def, false, true);
                                         } else {
                                             fieldSchema = z.never();
                                         }
                                     } else {
-                                        // regular field
-                                        fieldSchema = this.makePrimitiveFilterSchema(
-                                            def.type as BuiltinType,
-                                            !!def.optional,
-                                            false,
-                                        );
+                                        fieldSchema = this.makePrimitiveFilterSchema(model, def, false, true);
                                     }
                                     return [key, fieldSchema];
                                 }),
@@ -697,7 +714,12 @@ export class InputValidator<Schema extends SchemaDef> {
     }
 
     @cache()
-    private makeTypedJsonFilterSchema(type: string, optional: boolean, array: boolean) {
+    private makeTypedJsonFilterSchema(contextModel: string | undefined, fieldInfo: FieldInfo) {
+        const field = fieldInfo.name;
+        const type = fieldInfo.type;
+        const optional = !!fieldInfo.optional;
+        const array = !!fieldInfo.array;
+
         const typeDef = getTypeDef(this.schema, type);
         invariant(typeDef, `Type definition "${type}" not found in schema`);
 
@@ -708,28 +730,19 @@ export class InputValidator<Schema extends SchemaDef> {
             const fieldSchemas: Record<string, z.ZodType> = {};
             for (const [fieldName, fieldDef] of Object.entries(typeDef.fields)) {
                 if (this.isTypeDefType(fieldDef.type)) {
-                    // recursive typed JSON
-                    fieldSchemas[fieldName] = this.makeTypedJsonFilterSchema(
-                        fieldDef.type,
-                        !!fieldDef.optional,
-                        !!fieldDef.array,
-                    ).optional();
+                    // recursive typed JSON - use same model/field for nested typed JSON
+                    fieldSchemas[fieldName] = this.makeTypedJsonFilterSchema(contextModel, fieldDef).optional();
                 } else {
                     // enum, array, primitives
                     const enumDef = getEnum(this.schema, fieldDef.type);
                     if (enumDef) {
-                        fieldSchemas[fieldName] = this.makeEnumFilterSchema(
-                            fieldDef.type,
-                            !!fieldDef.optional,
-                            false,
-                            !!fieldDef.array,
-                        ).optional();
+                        fieldSchemas[fieldName] = this.makeEnumFilterSchema(contextModel, fieldDef, false).optional();
                     } else if (fieldDef.array) {
-                        fieldSchemas[fieldName] = this.makeArrayFilterSchema(fieldDef.type as BuiltinType).optional();
+                        fieldSchemas[fieldName] = this.makeArrayFilterSchema(contextModel, fieldDef).optional();
                     } else {
                         fieldSchemas[fieldName] = this.makePrimitiveFilterSchema(
-                            fieldDef.type as BuiltinType,
-                            !!fieldDef.optional,
+                            contextModel,
+                            fieldDef,
                             false,
                         ).optional();
                     }
@@ -739,7 +752,9 @@ export class InputValidator<Schema extends SchemaDef> {
             candidates.push(z.strictObject(fieldSchemas));
         }
 
-        const recursiveSchema = z.lazy(() => this.makeTypedJsonFilterSchema(type, optional, false)).optional();
+        const recursiveSchema = z
+            .lazy(() => this.makeTypedJsonFilterSchema(contextModel, { name: field, type, optional, array: false }))
+            .optional();
         if (array) {
             // array filter
             candidates.push(
@@ -760,7 +775,7 @@ export class InputValidator<Schema extends SchemaDef> {
         }
 
         // plain json filter
-        candidates.push(this.makeJsonFilterSchema(optional));
+        candidates.push(this.makeJsonFilterSchema(contextModel, field, optional));
 
         if (optional) {
             // allow null as well
@@ -776,49 +791,86 @@ export class InputValidator<Schema extends SchemaDef> {
     }
 
     @cache()
-    private makeEnumFilterSchema(enumName: string, optional: boolean, withAggregations: boolean, array: boolean) {
+    private makeEnumFilterSchema(
+        model: string | undefined,
+        fieldInfo: FieldInfo,
+        withAggregations: boolean,
+        ignoreSlicing: boolean = false,
+    ) {
+        const enumName = fieldInfo.type;
+        const optional = !!fieldInfo.optional;
+        const array = !!fieldInfo.array;
+
         const enumDef = getEnum(this.schema, enumName);
         invariant(enumDef, `Enum "${enumName}" not found in schema`);
         const baseSchema = z.enum(Object.keys(enumDef.values) as [string, ...string[]]);
         if (array) {
-            return this.internalMakeArrayFilterSchema(baseSchema);
+            return this.internalMakeArrayFilterSchema(model, fieldInfo.name, baseSchema);
         }
+        const allowedFilterKinds = ignoreSlicing ? undefined : this.getEffectiveFilterKinds(model, fieldInfo.name);
         const components = this.makeCommonPrimitiveFilterComponents(
             baseSchema,
             optional,
-            () => z.lazy(() => this.makeEnumFilterSchema(enumName, optional, withAggregations, array)),
+            () => z.lazy(() => this.makeEnumFilterSchema(model, fieldInfo, withAggregations)),
             ['equals', 'in', 'notIn', 'not'],
             withAggregations ? ['_count', '_min', '_max'] : undefined,
+            allowedFilterKinds,
         );
-        return z.union([this.nullableIf(baseSchema, optional), z.strictObject(components)]);
+
+        return this.createUnionFilterSchema(baseSchema, optional, components, allowedFilterKinds);
     }
 
     @cache()
-    private makeArrayFilterSchema(type: BuiltinType) {
-        return this.internalMakeArrayFilterSchema(this.makeScalarSchema(type));
+    private makeArrayFilterSchema(model: string | undefined, fieldInfo: FieldInfo) {
+        return this.internalMakeArrayFilterSchema(
+            model,
+            fieldInfo.name,
+            this.makeScalarSchema(fieldInfo.type as BuiltinType),
+        );
     }
 
-    private internalMakeArrayFilterSchema(elementSchema: ZodType) {
-        return z.strictObject({
+    private internalMakeArrayFilterSchema(contextModel: string | undefined, field: string, elementSchema: ZodType) {
+        const allowedFilterKinds = this.getEffectiveFilterKinds(contextModel, field);
+        const operators = {
             equals: elementSchema.array().optional(),
             has: elementSchema.optional(),
             hasEvery: elementSchema.array().optional(),
             hasSome: elementSchema.array().optional(),
             isEmpty: z.boolean().optional(),
-        });
+        };
+
+        // Filter operators based on allowed filter kinds
+        const filteredOperators = this.trimFilterOperators(operators, allowedFilterKinds);
+
+        return z.strictObject(filteredOperators);
     }
 
     @cache()
-    private makePrimitiveFilterSchema(type: BuiltinType, optional: boolean, withAggregations: boolean) {
+    private makePrimitiveFilterSchema(
+        contextModel: string | undefined,
+        fieldInfo: FieldInfo,
+        withAggregations: boolean,
+        ignoreSlicing = false,
+    ) {
+        const allowedFilterKinds = ignoreSlicing
+            ? undefined
+            : this.getEffectiveFilterKinds(contextModel, fieldInfo.name);
+        const type = fieldInfo.type as BuiltinType;
+        const optional = !!fieldInfo.optional;
         return match(type)
-            .with('String', () => this.makeStringFilterSchema(optional, withAggregations))
+            .with('String', () => this.makeStringFilterSchema(optional, withAggregations, allowedFilterKinds))
             .with(P.union('Int', 'Float', 'Decimal', 'BigInt'), (type) =>
-                this.makeNumberFilterSchema(this.makeScalarSchema(type), optional, withAggregations),
+                this.makeNumberFilterSchema(
+                    this.makeScalarSchema(type),
+                    optional,
+                    withAggregations,
+                    allowedFilterKinds,
+                ),
             )
-            .with('Boolean', () => this.makeBooleanFilterSchema(optional, withAggregations))
-            .with('DateTime', () => this.makeDateTimeFilterSchema(optional, withAggregations))
-            .with('Bytes', () => this.makeBytesFilterSchema(optional, withAggregations))
-            .with('Json', () => this.makeJsonFilterSchema(optional))
+            .with('Boolean', () => this.makeBooleanFilterSchema(optional, withAggregations, allowedFilterKinds))
+            .with('DateTime', () => this.makeDateTimeFilterSchema(optional, withAggregations, allowedFilterKinds))
+            .with('Bytes', () => this.makeBytesFilterSchema(optional, withAggregations, allowedFilterKinds))
+            .with('Json', () => this.makeJsonFilterSchema(contextModel, fieldInfo.name, optional))
             .with('Unsupported', () => z.never())
             .exhaustive();
     }
@@ -851,7 +903,15 @@ export class InputValidator<Schema extends SchemaDef> {
     }
 
     @cache()
-    private makeJsonFilterSchema(optional: boolean) {
+    private makeJsonFilterSchema(contextModel: string | undefined, field: string, optional: boolean) {
+        const allowedFilterKinds = this.getEffectiveFilterKinds(contextModel, field);
+
+        // Check if Json filter kind is allowed
+        if (allowedFilterKinds && !allowedFilterKinds.includes('Json')) {
+            // Return a never schema if Json filters are not allowed
+            return z.never();
+        }
+
         const valueSchema = this.makeJsonValueSchema(optional, true);
         return z.strictObject({
             path: z.string().optional(),
@@ -868,29 +928,44 @@ export class InputValidator<Schema extends SchemaDef> {
     }
 
     @cache()
-    private makeDateTimeFilterSchema(optional: boolean, withAggregations: boolean): ZodType {
+    private makeDateTimeFilterSchema(
+        optional: boolean,
+        withAggregations: boolean,
+        allowedFilterKinds: string[] | undefined,
+    ): ZodType {
         return this.makeCommonPrimitiveFilterSchema(
             z.union([z.iso.datetime(), z.date()]),
             optional,
-            () => z.lazy(() => this.makeDateTimeFilterSchema(optional, withAggregations)),
+            () => z.lazy(() => this.makeDateTimeFilterSchema(optional, withAggregations, allowedFilterKinds)),
             withAggregations ? ['_count', '_min', '_max'] : undefined,
+            allowedFilterKinds,
         );
     }
 
     @cache()
-    private makeBooleanFilterSchema(optional: boolean, withAggregations: boolean): ZodType {
+    private makeBooleanFilterSchema(
+        optional: boolean,
+        withAggregations: boolean,
+        allowedFilterKinds: string[] | undefined,
+    ): ZodType {
         const components = this.makeCommonPrimitiveFilterComponents(
             z.boolean(),
             optional,
-            () => z.lazy(() => this.makeBooleanFilterSchema(optional, withAggregations)),
+            () => z.lazy(() => this.makeBooleanFilterSchema(optional, withAggregations, allowedFilterKinds)),
             ['equals', 'not'],
             withAggregations ? ['_count', '_min', '_max'] : undefined,
+            allowedFilterKinds,
         );
-        return z.union([this.nullableIf(z.boolean(), optional), z.strictObject(components)]);
+
+        return this.createUnionFilterSchema(z.boolean(), optional, components, allowedFilterKinds);
     }
 
     @cache()
-    private makeBytesFilterSchema(optional: boolean, withAggregations: boolean): ZodType {
+    private makeBytesFilterSchema(
+        optional: boolean,
+        withAggregations: boolean,
+        allowedFilterKinds: string[] | undefined,
+    ): ZodType {
         const baseSchema = z.instanceof(Uint8Array);
         const components = this.makeCommonPrimitiveFilterComponents(
             baseSchema,
@@ -898,8 +973,10 @@ export class InputValidator<Schema extends SchemaDef> {
             () => z.instanceof(Uint8Array),
             ['equals', 'in', 'notIn', 'not'],
             withAggregations ? ['_count', '_min', '_max'] : undefined,
+            allowedFilterKinds,
         );
-        return z.union([this.nullableIf(baseSchema, optional), z.strictObject(components)]);
+
+        return this.createUnionFilterSchema(baseSchema, optional, components, allowedFilterKinds);
     }
 
     private makeCommonPrimitiveFilterComponents(
@@ -908,12 +985,12 @@ export class InputValidator<Schema extends SchemaDef> {
         makeThis: () => ZodType,
         supportedOperators: string[] | undefined = undefined,
         withAggregations: Array<'_count' | '_avg' | '_sum' | '_min' | '_max'> | undefined = undefined,
+        allowedFilterKinds: string[] | undefined = undefined,
     ) {
         const commonAggSchema = () =>
-            this.makeCommonPrimitiveFilterSchema(baseSchema, false, makeThis, undefined).optional();
+            this.makeCommonPrimitiveFilterSchema(baseSchema, false, makeThis, undefined, allowedFilterKinds).optional();
         let result = {
             equals: this.nullableIf(baseSchema.optional(), optional),
-            notEquals: this.nullableIf(baseSchema.optional(), optional),
             in: baseSchema.array().optional(),
             notIn: baseSchema.array().optional(),
             lt: baseSchema.optional(),
@@ -923,7 +1000,7 @@ export class InputValidator<Schema extends SchemaDef> {
             between: baseSchema.array().length(2).optional(),
             not: makeThis().optional(),
             ...(withAggregations?.includes('_count')
-                ? { _count: this.makeNumberFilterSchema(z.number().int(), false, false).optional() }
+                ? { _count: this.makeNumberFilterSchema(z.number().int(), false, false, undefined).optional() }
                 : {}),
             ...(withAggregations?.includes('_avg') ? { _avg: commonAggSchema() } : {}),
             ...(withAggregations?.includes('_sum') ? { _sum: commonAggSchema() } : {}),
@@ -934,6 +1011,10 @@ export class InputValidator<Schema extends SchemaDef> {
             const keys = [...supportedOperators, ...(withAggregations ?? [])];
             result = extractFields(result, keys) as typeof result;
         }
+
+        // Filter operators based on allowed filter kinds
+        result = this.trimFilterOperators(result, allowedFilterKinds) as typeof result;
+
         return result;
     }
 
@@ -941,46 +1022,70 @@ export class InputValidator<Schema extends SchemaDef> {
         baseSchema: ZodType,
         optional: boolean,
         makeThis: () => ZodType,
-        withAggregations: Array<AGGREGATE_OPERATORS> | undefined = undefined,
+        withAggregations: Array<AggregateOperators> | undefined = undefined,
+        allowedFilterKinds: string[] | undefined = undefined,
     ): z.ZodType {
-        return z.union([
-            this.nullableIf(baseSchema, optional),
-            z.strictObject(
-                this.makeCommonPrimitiveFilterComponents(baseSchema, optional, makeThis, undefined, withAggregations),
-            ),
-        ]);
+        const components = this.makeCommonPrimitiveFilterComponents(
+            baseSchema,
+            optional,
+            makeThis,
+            undefined,
+            withAggregations,
+            allowedFilterKinds,
+        );
+
+        return this.createUnionFilterSchema(baseSchema, optional, components, allowedFilterKinds);
     }
 
-    private makeNumberFilterSchema(baseSchema: ZodType, optional: boolean, withAggregations: boolean): ZodType {
+    private makeNumberFilterSchema(
+        baseSchema: ZodType,
+        optional: boolean,
+        withAggregations: boolean,
+        allowedFilterKinds: string[] | undefined,
+    ): ZodType {
         return this.makeCommonPrimitiveFilterSchema(
             baseSchema,
             optional,
-            () => z.lazy(() => this.makeNumberFilterSchema(baseSchema, optional, withAggregations)),
+            () => z.lazy(() => this.makeNumberFilterSchema(baseSchema, optional, withAggregations, allowedFilterKinds)),
             withAggregations ? ['_count', '_avg', '_sum', '_min', '_max'] : undefined,
+            allowedFilterKinds,
         );
     }
 
-    private makeStringFilterSchema(optional: boolean, withAggregations: boolean): ZodType {
-        return z.union([
-            this.nullableIf(z.string(), optional),
-            z.strictObject({
-                ...this.makeCommonPrimitiveFilterComponents(
-                    z.string(),
-                    optional,
-                    () => z.lazy(() => this.makeStringFilterSchema(optional, withAggregations)),
-                    undefined,
-                    withAggregations ? ['_count', '_min', '_max'] : undefined,
-                ),
-                startsWith: z.string().optional(),
-                endsWith: z.string().optional(),
-                contains: z.string().optional(),
-                ...(this.providerSupportsCaseSensitivity
-                    ? {
-                          mode: this.makeStringModeSchema().optional(),
-                      }
-                    : {}),
-            }),
-        ]);
+    private makeStringFilterSchema(
+        optional: boolean,
+        withAggregations: boolean,
+        allowedFilterKinds: string[] | undefined,
+    ): ZodType {
+        const baseComponents = this.makeCommonPrimitiveFilterComponents(
+            z.string(),
+            optional,
+            () => z.lazy(() => this.makeStringFilterSchema(optional, withAggregations, allowedFilterKinds)),
+            undefined,
+            withAggregations ? ['_count', '_min', '_max'] : undefined,
+            allowedFilterKinds,
+        );
+
+        const stringSpecificOperators = {
+            startsWith: z.string().optional(),
+            endsWith: z.string().optional(),
+            contains: z.string().optional(),
+            ...(this.providerSupportsCaseSensitivity
+                ? {
+                      mode: this.makeStringModeSchema().optional(),
+                  }
+                : {}),
+        };
+
+        // Filter string-specific operators based on allowed filter kinds
+        const filteredStringOperators = this.trimFilterOperators(stringSpecificOperators, allowedFilterKinds);
+
+        const allComponents = {
+            ...baseComponents,
+            ...filteredStringOperators,
+        };
+
+        return this.createUnionFilterSchema(z.string(), optional, allComponents, allowedFilterKinds);
     }
 
     private makeStringModeSchema() {
@@ -994,7 +1099,10 @@ export class InputValidator<Schema extends SchemaDef> {
         for (const field of Object.keys(modelDef.fields)) {
             const fieldDef = requireField(this.schema, model, field);
             if (fieldDef.relation) {
-                fields[field] = this.makeRelationSelectIncludeSchema(model, field).optional();
+                // Check if the target model is allowed by slicing configuration
+                if (this.isModelAllowed(fieldDef.type)) {
+                    fields[field] = this.makeRelationSelectIncludeSchema(model, field).optional();
+                }
             } else {
                 fields[field] = z.boolean().optional();
             }
@@ -1109,7 +1217,10 @@ export class InputValidator<Schema extends SchemaDef> {
         for (const field of Object.keys(modelDef.fields)) {
             const fieldDef = requireField(this.schema, model, field);
             if (fieldDef.relation) {
-                fields[field] = this.makeRelationSelectIncludeSchema(model, field).optional();
+                // Check if the target model is allowed by slicing configuration
+                if (this.isModelAllowed(fieldDef.type)) {
+                    fields[field] = this.makeRelationSelectIncludeSchema(model, field).optional();
+                }
             }
         }
 
@@ -1247,6 +1358,10 @@ export class InputValidator<Schema extends SchemaDef> {
 
             if (fieldDef.relation) {
                 if (withoutRelationFields) {
+                    return;
+                }
+                // Check if the target model is allowed by slicing configuration
+                if (!this.isModelAllowed(fieldDef.type)) {
                     return;
                 }
                 const excludeFields: string[] = [];
@@ -1562,6 +1677,10 @@ export class InputValidator<Schema extends SchemaDef> {
                 if (withoutRelationFields) {
                     return;
                 }
+                // Check if the target model is allowed by slicing configuration
+                if (!this.isModelAllowed(fieldDef.type)) {
+                    return;
+                }
                 const excludeFields: string[] = [];
                 const oppositeField = fieldDef.relation.opposite;
                 if (oppositeField) {
@@ -1801,7 +1920,7 @@ export class InputValidator<Schema extends SchemaDef> {
             const bys = typeof value.by === 'string' ? [value.by] : value.by;
             if (value.having && typeof value.having === 'object') {
                 for (const [key, val] of Object.entries(value.having)) {
-                    if (AGGREGATE_OPERATORS.includes(key as any)) {
+                    if (AggregateOperators.includes(key as any)) {
                         continue;
                     }
                     if (bys.includes(key)) {
@@ -1829,7 +1948,7 @@ export class InputValidator<Schema extends SchemaDef> {
             if (
                 value.orderBy &&
                 Object.keys(value.orderBy)
-                    .filter((f) => !AGGREGATE_OPERATORS.includes(f as AGGREGATE_OPERATORS))
+                    .filter((f) => !AggregateOperators.includes(f as AggregateOperators))
                     .some((key) => !bys.includes(key))
             ) {
                 return false;
@@ -1843,7 +1962,7 @@ export class InputValidator<Schema extends SchemaDef> {
 
     private onlyAggregationFields(val: object) {
         for (const [key, value] of Object.entries(val)) {
-            if (AGGREGATE_OPERATORS.includes(key as any)) {
+            if (AggregateOperators.includes(key as any)) {
                 // aggregation field
                 continue;
             }
@@ -1963,6 +2082,172 @@ export class InputValidator<Schema extends SchemaDef> {
 
     private get providerSupportsCaseSensitivity() {
         return this.schema.provider.type === 'postgresql';
+    }
+
+    /**
+     * Gets the effective set of allowed FilterKind values for a specific model and field.
+     * Respects the precedence: model[field] > model.$all > $all[field] > $all.$all.
+     */
+    private getEffectiveFilterKinds(model: string | undefined, field: string): string[] | undefined {
+        if (!model) {
+            // no restrictions
+            return undefined;
+        }
+
+        const slicing = this.options.slicing;
+        if (!slicing?.models) {
+            // no slicing or no model-specific slicing, no restrictions
+            return undefined;
+        }
+
+        // A string-indexed view of slicing.models that avoids unsafe 'as any' while still
+        // allowing runtime access by model name. The value shape matches FieldSlicingOptions.
+        type FieldConfig = { includedFilterKinds?: readonly string[]; excludedFilterKinds?: readonly string[] };
+        type FieldsRecord = { $all?: FieldConfig } & Record<string, FieldConfig>;
+        type ModelConfig = { fields?: FieldsRecord };
+        const modelsRecord = slicing.models as Record<string, ModelConfig>;
+
+        // Check field-level settings for the specific model
+        const modelConfig = modelsRecord[lowerCaseFirst(model)];
+        if (modelConfig?.fields) {
+            const fieldConfig = modelConfig.fields[field];
+            if (fieldConfig) {
+                return this.computeFilterKinds(fieldConfig.includedFilterKinds, fieldConfig.excludedFilterKinds);
+            }
+
+            // Fallback to field-level $all for the specific model
+            const allFieldsConfig = modelConfig.fields['$all'];
+            if (allFieldsConfig) {
+                return this.computeFilterKinds(
+                    allFieldsConfig.includedFilterKinds,
+                    allFieldsConfig.excludedFilterKinds,
+                );
+            }
+        }
+
+        // Fallback to model-level $all
+        const allModelsConfig = modelsRecord['$all'];
+        if (allModelsConfig?.fields) {
+            // Check specific field in $all model config before falling back to $all.$all
+            const allModelsFieldConfig = allModelsConfig.fields[field];
+            if (allModelsFieldConfig) {
+                return this.computeFilterKinds(
+                    allModelsFieldConfig.includedFilterKinds,
+                    allModelsFieldConfig.excludedFilterKinds,
+                );
+            }
+
+            // Fallback to $all.$all
+            const allModelsAllFieldsConfig = allModelsConfig.fields['$all'];
+            if (allModelsAllFieldsConfig) {
+                return this.computeFilterKinds(
+                    allModelsAllFieldsConfig.includedFilterKinds,
+                    allModelsAllFieldsConfig.excludedFilterKinds,
+                );
+            }
+        }
+
+        return undefined; // No restrictions
+    }
+
+    /**
+     * Computes the effective set of filter kinds based on inclusion and exclusion lists.
+     */
+    private computeFilterKinds(included: readonly string[] | undefined, excluded: readonly string[] | undefined) {
+        let result: string[] | undefined;
+
+        if (included !== undefined) {
+            // Start with the included set
+            result = [...included];
+        }
+
+        if (excluded !== undefined) {
+            if (!result) {
+                // If no inclusion list, start with all filter kinds
+                result = [...this.allFilterKinds];
+            }
+            // Remove excluded kinds
+            for (const kind of excluded) {
+                result = result.filter((k) => k !== kind);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Filters operators based on allowed filter kinds.
+     */
+    private trimFilterOperators<T extends Record<string, any>>(
+        operators: T,
+        allowedKinds: string[] | undefined,
+    ): Partial<T> {
+        if (!allowedKinds) {
+            return operators; // No restrictions
+        }
+
+        return Object.fromEntries(
+            Object.entries(operators).filter(([key, _]) => {
+                return (
+                    !(key in FILTER_PROPERTY_TO_KIND) ||
+                    allowedKinds.includes(FILTER_PROPERTY_TO_KIND[key as keyof typeof FILTER_PROPERTY_TO_KIND])
+                );
+            }),
+        ) as Partial<T>;
+    }
+
+    private createUnionFilterSchema(
+        valueSchema: ZodType,
+        optional: boolean,
+        components: Record<string, ZodType>,
+        allowedFilterKinds: string[] | undefined,
+    ) {
+        // If all filter operators are excluded
+        if (Object.keys(components).length === 0) {
+            // if equality filters are allowed, allow direct value
+            if (!allowedFilterKinds || allowedFilterKinds.includes('Equality')) {
+                return this.nullableIf(valueSchema, optional);
+            }
+            // otherwise nothing is allowed
+            return z.never();
+        }
+
+        if (!allowedFilterKinds || allowedFilterKinds.includes('Equality')) {
+            // direct value or filter operators
+            return z.union([this.nullableIf(valueSchema, optional), z.strictObject(components)]);
+        } else {
+            // filter operators
+            return z.strictObject(components);
+        }
+    }
+
+    /**
+     * Checks if a model is included in the slicing configuration.
+     * Returns true if the model is allowed, false if it's excluded.
+     */
+    private isModelAllowed(targetModel: string): boolean {
+        const slicing = this.options.slicing;
+        if (!slicing) {
+            return true; // No slicing, all models allowed
+        }
+
+        const { includedModels, excludedModels } = slicing;
+
+        // If includedModels is specified, only those models are allowed
+        if (includedModels !== undefined) {
+            if (!includedModels.includes(targetModel as any)) {
+                return false;
+            }
+        }
+
+        // If excludedModels is specified, those models are not allowed
+        if (excludedModels !== undefined) {
+            if (excludedModels.includes(targetModel as any)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // #endregion
