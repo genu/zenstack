@@ -525,6 +525,9 @@ importers:
       '@zenstackhq/schema':
         specifier: workspace:*
         version: link:../schema
+      '@zenstackhq/zod':
+        specifier: workspace:*
+        version: link:../zod
       better-sqlite3:
         specifier: 'catalog:'
         version: 12.5.0
@@ -642,6 +645,9 @@ importers:
       '@zenstackhq/typescript-config':
         specifier: workspace:*
         version: link:../config/typescript-config
+      '@zenstackhq/vitest-config':
+        specifier: workspace:*
+        version: link:../config/vitest-config
 
   packages/sdk:
     dependencies:
@@ -828,9 +834,18 @@ importers:
 
   packages/zod:
     dependencies:
-      '@zenstackhq/orm':
+      '@zenstackhq/common-helpers':
         specifier: workspace:*
-        version: link:../orm
+        version: link:../common-helpers
+      '@zenstackhq/schema':
+        specifier: workspace:*
+        version: link:../schema
+      decimal.js:
+        specifier: 'catalog:'
+        version: 10.6.0
+      json-stable-stringify:
+        specifier: ^1.3.0
+        version: 1.3.0
       ts-pattern:
         specifier: 'catalog:'
         version: 5.7.1
@@ -841,6 +856,9 @@ importers:
       '@zenstackhq/typescript-config':
         specifier: workspace:*
         version: link:../config/typescript-config
+      '@zenstackhq/vitest-config':
+        specifier: workspace:*
+        version: link:../config/vitest-config
       zod:
         specifier: ^4.1.0
         version: 4.1.12
