@@ -382,6 +382,8 @@ function evalBinary(data: any, expr: BinaryExpression) {
                 return false;
             }
             return right.includes(left);
+        default:
+            throw new SchemaFactoryError(`Unsupported binary operator: ${expr.op}`);
     }
 }
 
