@@ -1,3 +1,2 @@
-export { createSchemaFactory as createModelSchemaFactory } from './factory';
-export type * from './types';
+export { createSchemaFactory } from './factory';
 export * as ZodUtils from './utils';
