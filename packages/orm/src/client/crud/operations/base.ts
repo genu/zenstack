@@ -170,6 +170,16 @@ export const AllReadOperations = [...CoreReadOperations, 'findUniqueOrThrow', 'f
  */
 export type AllReadOperations = (typeof AllReadOperations)[number];
 
+/**
+ * List of all write operations - simply an alias of CoreWriteOperations.
+ */
+export const AllWriteOperations = CoreWriteOperations;
+
+/**
+ * List of all write operations - simply an alias of CoreWriteOperations.
+ */
+export type AllWriteOperations = CoreWriteOperations;
+
 // context for nested relation operations
 export type FromRelationContext = {
     // the model where the relation field is defined
@@ -272,7 +282,7 @@ export abstract class BaseOperationHandler<Schema extends SchemaDef> {
     protected async read(
         kysely: AnyKysely,
         model: string,
-        args: FindArgs<Schema, GetModels<Schema>, true> | undefined,
+        args: FindArgs<Schema, GetModels<Schema>, any, true> | undefined,
     ): Promise<any[]> {
         // table
         let query = this.dialect.buildSelectModel(model, model);
@@ -310,7 +320,7 @@ export abstract class BaseOperationHandler<Schema extends SchemaDef> {
         return result;
     }
 
-    protected async readUnique(kysely: AnyKysely, model: string, args: FindArgs<Schema, GetModels<Schema>, true>) {
+    protected async readUnique(kysely: AnyKysely, model: string, args: FindArgs<Schema, GetModels<Schema>, any, true>) {
         const result = await this.read(kysely, model, { ...args, take: 1 });
         return result[0] ?? null;
     }
@@ -1137,7 +1147,7 @@ export abstract class BaseOperationHandler<Schema extends SchemaDef> {
 
         const parentWhere = await this.buildUpdateParentRelationFilter(kysely, fromRelation);
 
-        let combinedWhere: WhereInput<Schema, GetModels<Schema>, false> = where ?? {};
+        let combinedWhere: WhereInput<Schema, GetModels<Schema>, any, false> = where ?? {};
         if (Object.keys(parentWhere).length > 0) {
             combinedWhere = Object.keys(combinedWhere).length > 0 ? { AND: [parentWhere, combinedWhere] } : parentWhere;
         }
@@ -1540,7 +1550,7 @@ export abstract class BaseOperationHandler<Schema extends SchemaDef> {
         }
 
         const parentWhere = await this.buildUpdateParentRelationFilter(kysely, fromRelation);
-        let combinedWhere: WhereInput<Schema, GetModels<Schema>, false> = where ?? {};
+        let combinedWhere: WhereInput<Schema, GetModels<Schema>, any, false> = where ?? {};
         if (Object.keys(parentWhere).length > 0) {
             combinedWhere = Object.keys(combinedWhere).length > 0 ? { AND: [parentWhere, combinedWhere] } : parentWhere;
         }
